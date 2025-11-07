@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>自动弹出便签礼物</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            font-family: 'Comic Sans MS', '微软雅黑', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .start-btn {
+            padding: 15px 40px;
+            background: #ff9a8b;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+            transition: background 0.3s;
+            z-index: 100;
+            position: relative;
+        }
+        .start-btn:hover {
+            background: #ff6b5b;
+        }
+        .start-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .note-modal {
+            position: absolute;
+            width: 220px;
+            padding: 20px;
+            background: #fff9c4;
+            border: 1px solid #ffe082;
+            border-radius: 8px;
+            box-shadow: 3px 3px 10px rgba(0,0,0,0.15);
+            transform: rotate(var(--rotate, -2deg));
+            z-index: 10;
+            cursor: move;
+        }
+        .note-modal:hover {
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.2);
+        }
+        .note-content {
+            font-size: 16px;
+            color: #333;
+            line-height: 1.5;
+            background: transparent;
+            border: none;
+            width: 100%;
+            resize: none;
+            outline: none;
+            font-family: inherit;
+            padding: 5px;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .note-content:hover {
+            background: rgba(255,255,255,0.5);
+        }
+        .note-content:focus {
+            background: rgba(255,255,255,0.8);
+        }
+        .note-footer {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #666;
+            text-align: right;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .delete-btn {
+            background: none;
+            border: none;
+            color: #ff4444;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .delete-btn:hover {
+            background: rgba(255,68,68,0.1);
+        }
+        .dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+        .note-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .note-number {
+            font-size: 14px;
+            color: #666;
+            font-weight: bold;
+        }
+        .edit-hint {
+            font-size: 12px;
+            color: #999;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .note-modal:hover .edit-hint {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <button class="start-btn" onclick="startAutoNote()">开始弹出神秘礼物</button>
+
+    <script>
+        let modalCount = 0;
+        let noteInterval;
+        let isDragging = false;
+        let currentNote = null;
+        let offsetX, offsetY;
+
+        // 祝福语数组
+        const blessings = [
+            "愿你的每一天都充满阳光和欢笑",
+            "愿所有美好的事情都与你相伴",
+            "祝你幸福快乐，万事如意",
+            "愿你永远年轻，永远热泪盈眶",
+            "愿你被这个世界温柔以待"
+        ];
+
+        function getRandomPos() {
+            const maxX = window.innerWidth - 260;
+            const maxY = window.innerHeight - 180;
+            const x = Math.floor(Math.random() * maxX);
+            const y = Math.floor(Math.random() * maxY);
+            const rotate = (Math.random() * 4 - 2) + 'deg';
+            return { x, y, rotate };
+        }
+
+        function createNoteModal() {
+            modalCount++;
+            const { x, y, rotate } = getRandomPos();
+            const note = document.createElement('div');
+            note.className = 'note-modal';
+            note.style.left = x + 'px';
+            note.style.top = y + 'px';
+            note.style.setProperty('--rotate', rotate);
+            
+            // 随机选择一条祝福语
+            const blessing = blessings[Math.floor(Math.random() * blessings.length)];
+            
+            note.innerHTML = `
+                <div class="note-header">
+                    <span class="note-number">🎁 礼物 #${modalCount}</span>
+                    <span class="edit-hint">可编辑</span>
+                </div>
+                <textarea class="note-content" rows="4">${blessing}</textarea>
+                <div class="note-footer">
+                    <span>神秘礼物库</span>
+                    <button class="delete-btn" onclick="deleteNote(this)">✕</button>
+                </div>
+            `;
+
+            // 添加拖拽功能
+            note.addEventListener('mousedown', startDrag);
+            
+            // 添加自动保存功能
+            const textarea = note.querySelector('.note-content');
+            textarea.addEventListener('input', () => {
+                // 这里可以添加保存到本地存储的逻辑
+                localStorage.setItem(`note-${modalCount}`, textarea.value);
+            });
+
+            // 如果有保存的内容，则恢复
+            const savedContent = localStorage.getItem(`note-${modalCount}`);
+            if (savedContent) {
+                textarea.value = savedContent;
+            }
+            
+            document.body.appendChild(note);
+        }
+
+        function deleteNote(btn) {
+            const note = btn.closest('.note-modal');
+            const noteNumber = note.querySelector('.note-number').textContent;
+            note.style.transform = 'scale(0)';
+            setTimeout(() => {
+                // 清除本地存储
+                localStorage.removeItem(`note-${modalCount}`);
+                note.remove();
+            }, 300);
+        }
+
+        function startDrag(e) {
+            if (e.target.classList.contains('note-content') || 
+                e.target.classList.contains('delete-btn')) {
+                return;
+            }
+            
+            isDragging = true;
+            currentNote = e.currentTarget;
+            currentNote.classList.add('dragging');
+            
+            const rect = currentNote.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+            
+            const x = e.clientX - offsetX;
+            const y = e.clientY - offsetY;
+            
+            currentNote.style.left = x + 'px';
+            currentNote.style.top = y + 'px';
+        }
+
+        function stopDrag() {
+            isDragging = false;
+            if (currentNote) {
+                currentNote.classList.remove('dragging');
+            }
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+        }
+
+        function startAutoNote() {
+            document.querySelector('.start-btn').disabled = true;
+            document.querySelector('.start-btn').textContent = '正在弹出...';
+            
+            // 调整为每500毫秒弹出一个
+            noteInterval = setInterval(createNoteModal, 500);
+            
+            // 10秒后停止弹出
+            setTimeout(() => {
+                clearInterval(noteInterval);
+                document.querySelector('.start-btn').disabled = false;
+                document.querySelector('.start-btn').textContent = '开始弹出神秘礼物';
+            }, 10000);
+        }
+    </script>
+</body>
+</html>
